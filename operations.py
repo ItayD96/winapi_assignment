@@ -1,7 +1,10 @@
+import os
+
+import tempfile
 import win32api
 import wmi
-import pyuac
 from typing import List
+import subprocess
 
 
 def get_params() -> dict:
@@ -21,7 +24,12 @@ def get_params() -> dict:
     }
 
 
-def get_system_family():
+def get_system_family() -> str:
+    """
+    The type of the windows running on - (PC,Laptop VM...)
+    Returns:
+        str - with the type of the family
+    """
     return wmi.WMI().Win32_ComputerSystem()[0].SystemFamily
 
 
@@ -31,7 +39,10 @@ def get_uac_state() -> bool:
     Returns:
         bool - if the user is admin.
     """
-    return pyuac.isUserAdmin()
+    uac_state = execute_to_file(
+        'powershell.exe (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Windows'
+        '\CurrentVersion\Policies\System).EnableLUA')
+    return uac_state == '1'
 
 
 def get_os_vers() -> dict:
@@ -45,12 +56,34 @@ def get_os_vers() -> dict:
     return {'major': major, 'minor': minor, 'build': build}
 
 
-def get_serial_number() -> str:
+def get_serial_number() -> bool:
     """
     Returns:
         str - Get the machine serial number.
     """
     return wmi.WMI().Win32_PhysicalMedia()[0].SerialNumber
+
+
+def execute_to_file(command):
+    """
+    This function execute the command
+    and pass its output to a tempfile then read it back
+    It is usefull for process that deploy child process
+    """
+    temp_file = tempfile.NamedTemporaryFile(delete=False)
+    temp_file.close()
+    path = temp_file.name
+    command = command + " > " + path
+    proc = subprocess.run(command, shell=True, stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE, universal_newlines=True)
+    if proc.stderr:
+        # if command failed return
+        os.unlink(path)
+        return
+    with open(path, 'r') as f:
+        data = f.read()
+    os.unlink(path)
+    return data
 
 
 def get_timezone():
